@@ -15,7 +15,7 @@ describe('ssdMobilenetv1 - node', () => {
   const expectedScores = [0.54, 0.81, 0.97, 0.88, 0.84, 0.61]
 
   beforeAll(async () => {
-    imgTensor = tf.fromPixels(createCanvasFromMedia(await loadImage('test/images/faces.jpg')))
+    imgTensor = tf.browser.fromPixels(createCanvasFromMedia(await loadImage('test/images/faces.jpg')))
     expectedFullFaceDescriptions = await assembleExpectedFullFaceDescriptions(expectedSsdBoxes)
   })
 
@@ -70,6 +70,32 @@ describe('ssdMobilenetv1 - node', () => {
       }
       expect(results.length).toEqual(6)
       expectFullFaceDescriptions(results, expectedFullFaceDescriptions, expectedScores, deltas)
+    })
+
+    it('detectSingleFace.withFaceLandmarks().withFaceDescriptor()', async () => {
+      const options = new SsdMobilenetv1Options({
+        minConfidence: 0.5
+      })
+
+      const result = await faceapi
+        .detectSingleFace(imgTensor, options)
+        .withFaceLandmarks()
+        .withFaceDescriptor()
+
+      const deltas = {
+        maxScoreDelta: 0.05,
+        maxBoxDelta: 5,
+        maxLandmarksDelta: 4,
+        maxDescriptorDelta: 0.2
+      }
+    
+      expect(!!result).toBeTruthy()
+      expectFullFaceDescriptions(
+        result ? [result] : [],
+        [expectedFullFaceDescriptions[2]],
+        [expectedScores[2]],
+        deltas
+      )
     })
 
     it('no memory leaks', async () => {

@@ -1,10 +1,12 @@
+import { AgeGenderNet } from '../ageGenderNet/AgeGenderNet';
+import { FaceExpressionNet } from '../faceExpressionNet/FaceExpressionNet';
 import { FaceLandmark68Net } from '../faceLandmarkNet/FaceLandmark68Net';
 import { FaceLandmark68TinyNet } from '../faceLandmarkNet/FaceLandmark68TinyNet';
 import { FaceRecognitionNet } from '../faceRecognitionNet/FaceRecognitionNet';
 import { Mtcnn } from '../mtcnn/Mtcnn';
 import { SsdMobilenetv1 } from '../ssdMobilenetv1/SsdMobilenetv1';
 import { TinyFaceDetector } from '../tinyFaceDetector/TinyFaceDetector';
-import { TinyYolov2 } from '../tinyYolov2/TinyYolov2';
+import { TinyYolov2 } from '../tinyYolov2';
 export var nets = {
     ssdMobilenetv1: new SsdMobilenetv1(),
     tinyFaceDetector: new TinyFaceDetector(),
@@ -12,7 +14,9 @@ export var nets = {
     mtcnn: new Mtcnn(),
     faceLandmark68Net: new FaceLandmark68Net(),
     faceLandmark68TinyNet: new FaceLandmark68TinyNet(),
-    faceRecognitionNet: new FaceRecognitionNet()
+    faceRecognitionNet: new FaceRecognitionNet(),
+    faceExpressionNet: new FaceExpressionNet(),
+    ageGenderNet: new AgeGenderNet()
 };
 /**
  * Attempts to detect all faces in an image using SSD Mobilenetv1 Network.
@@ -90,6 +94,26 @@ export var detectFaceLandmarksTiny = function (input) {
 export var computeFaceDescriptor = function (input) {
     return nets.faceRecognitionNet.computeFaceDescriptor(input);
 };
+/**
+ * Recognizes the facial expressions from a face image.
+ *
+ * @param inputs The face image extracted from the bounding box of a face. Can
+ * also be an array of input images, which will be batch processed.
+ * @returns Facial expressions with corresponding probabilities or array thereof in case of batch input.
+ */
+export var recognizeFaceExpressions = function (input) {
+    return nets.faceExpressionNet.predictExpressions(input);
+};
+/**
+ * Predicts age and gender from a face image.
+ *
+ * @param inputs The face image extracted from the bounding box of a face. Can
+ * also be an array of input images, which will be batch processed.
+ * @returns Predictions with age, gender and gender probability or array thereof in case of batch input.
+ */
+export var predictAgeAndGender = function (input) {
+    return nets.ageGenderNet.predictAgeAndGender(input);
+};
 export var loadSsdMobilenetv1Model = function (url) { return nets.ssdMobilenetv1.load(url); };
 export var loadTinyFaceDetectorModel = function (url) { return nets.tinyFaceDetector.load(url); };
 export var loadMtcnnModel = function (url) { return nets.mtcnn.load(url); };
@@ -97,6 +121,8 @@ export var loadTinyYolov2Model = function (url) { return nets.tinyYolov2.load(ur
 export var loadFaceLandmarkModel = function (url) { return nets.faceLandmark68Net.load(url); };
 export var loadFaceLandmarkTinyModel = function (url) { return nets.faceLandmark68TinyNet.load(url); };
 export var loadFaceRecognitionModel = function (url) { return nets.faceRecognitionNet.load(url); };
+export var loadFaceExpressionModel = function (url) { return nets.faceExpressionNet.load(url); };
+export var loadAgeGenderModel = function (url) { return nets.ageGenderNet.load(url); };
 // backward compatibility
 export var loadFaceDetectionModel = loadSsdMobilenetv1Model;
 export var locateFaces = ssdMobilenetv1;

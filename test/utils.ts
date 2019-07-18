@@ -1,10 +1,11 @@
 import * as tf from '@tensorflow/tfjs-core';
-import { getContext2dOrThrow } from 'tfjs-image-recognition-base';
 
 import * as faceapi from '../src';
-import { createCanvasFromMedia, FaceRecognitionNet, IPoint, IRect, Mtcnn, TinyYolov2 } from '../src/';
+import { FaceRecognitionNet, IPoint, IRect, Mtcnn, TinyYolov2 } from '../src/';
+import { AgeGenderNet } from '../src/ageGenderNet/AgeGenderNet';
 import { FaceDetection } from '../src/classes/FaceDetection';
 import { FaceLandmarks } from '../src/classes/FaceLandmarks';
+import { FaceExpressionNet } from '../src/faceExpressionNet/FaceExpressionNet';
 import { FaceLandmark68Net } from '../src/faceLandmarkNet/FaceLandmark68Net';
 import { FaceLandmark68TinyNet } from '../src/faceLandmarkNet/FaceLandmark68TinyNet';
 import { SsdMobilenetv1 } from '../src/ssdMobilenetv1/SsdMobilenetv1';
@@ -12,7 +13,7 @@ import { TinyFaceDetector } from '../src/tinyFaceDetector/TinyFaceDetector';
 import { initNet, loadJson } from './env';
 
 export function expectMaxDelta(val1: number, val2: number, maxDelta: number) {
-  expect(Math.abs(val1 - val2)).toBeLessThan(maxDelta)
+  expect(Math.abs(val1 - val2)).toBeLessThanOrEqual(maxDelta)
 }
 
 export async function expectAllTensorsReleased(fn: () => any) {
@@ -30,7 +31,16 @@ export function expectPointClose(
   expectedPoint: IPoint,
   maxDelta: number
 ) {
-  expect(pointDistance(result, expectedPoint)).toBeLessThan(maxDelta)
+  expect(pointDistance(result, expectedPoint)).toBeLessThanOrEqual(maxDelta)
+}
+
+export function expectPointsClose(
+  results: IPoint[],
+  expectedPoints: IPoint[],
+  maxDelta: number
+) {
+  expect(results.length).toEqual(expectedPoints.length)
+  results.forEach((pt, j) => expectPointClose(pt, expectedPoints[j], maxDelta))
 }
 
 export function expectRectClose(
@@ -62,8 +72,12 @@ export function sortLandmarks(landmarks: FaceLandmarks[]) {
   return sortByDistanceToOrigin(landmarks, l => l.positions[0])
 }
 
-export function sortByFaceDetection<T extends { detection: FaceDetection }>(descs: T[]) {
-  return sortByDistanceToOrigin(descs, d => d.detection.box)
+export function sortByFaceBox<T extends { box: IRect }>(objs: T[]) {
+  return sortByDistanceToOrigin(objs, o => o.box)
+}
+
+export function sortByFaceDetection<T extends { detection: FaceDetection }>(objs: T[]) {
+  return sortByDistanceToOrigin(objs, d => d.detection.box)
 }
 
 export type ExpectedFaceDetectionWithLandmarks = {
@@ -79,8 +93,8 @@ export async function assembleExpectedFullFaceDescriptions(
   detections: IRect[],
   landmarksFile: string = 'facesFaceLandmarkPositions.json'
 ): Promise<ExpectedFullFaceDescription[]> {
-  const landmarks = await loadJson(`test/data/${landmarksFile}`)
-  const descriptors = await loadJson('test/data/facesFaceDescriptors.json')
+  const landmarks = await loadJson<any[]>(`test/data/${landmarksFile}`)
+  const descriptors = await loadJson<any[]>('test/data/facesFaceDescriptors.json')
 
   return detections.map((detection, i) => ({
     detection,
@@ -104,6 +118,8 @@ export type InjectNetArgs = {
   faceLandmark68TinyNet: FaceLandmark68TinyNet
   faceRecognitionNet: FaceRecognitionNet
   mtcnn: Mtcnn
+  faceExpressionNet: FaceExpressionNet
+  ageGenderNet: AgeGenderNet
   tinyYolov2: TinyYolov2
 }
 
@@ -118,7 +134,44 @@ export type DescribeWithNetsOptions = {
   withFaceLandmark68TinyNet?: WithNetOptions
   withFaceRecognitionNet?: WithNetOptions
   withMtcnn?: WithNetOptions
+  withFaceExpressionNet?: WithNetOptions
+  withAgeGenderNet?: WithNetOptions
   withTinyYolov2?: WithTinyYolov2Options
+}
+
+const gpgpu = tf.backend()['gpgpu']
+
+if (gpgpu) {
+  console.log('running tests on WebGL backend')
+} else {
+  console.log('running tests on CPU backend')
+}
+
+export function describeWithBackend(description: string, specDefinitions: () => void) {
+
+  if (!(gpgpu instanceof tf.webgl.GPGPUContext)) {
+    describe(description, specDefinitions)
+    return
+  }
+
+  const defaultBackendName = tf.getBackend()
+  const newBackendName = 'testBackend'
+  const backend = new tf.webgl.MathBackendWebGL(gpgpu)
+
+  describe(description, () => {
+    beforeAll(() => {
+      tf.registerBackend(newBackendName, () => backend)
+      tf.setBackend(newBackendName)
+    })
+
+    afterAll(() => {
+      tf.setBackend(defaultBackendName)
+      tf.removeBackend(newBackendName)
+      backend.dispose()
+    })
+
+    specDefinitions()
+  })
 }
 
 export function describeWithNets(
@@ -135,6 +188,8 @@ export function describeWithNets(
       faceLandmark68TinyNet,
       faceRecognitionNet,
       mtcnn,
+      faceExpressionNet,
+      ageGenderNet,
       tinyYolov2
     } = faceapi.nets
 
@@ -150,6 +205,8 @@ export function describeWithNets(
         withFaceLandmark68TinyNet,
         withFaceRecognitionNet,
         withMtcnn,
+        withFaceExpressionNet,
+        withAgeGenderNet,
         withTinyYolov2
       } = options
 
@@ -195,6 +252,20 @@ export function describeWithNets(
         )
       }
 
+      if (withFaceExpressionNet) {
+        await initNet<FaceExpressionNet>(
+          faceExpressionNet,
+          !!withFaceExpressionNet && !withFaceExpressionNet.quantized && 'face_expression_model.weights'
+        )
+      }
+
+      if (withAgeGenderNet) {
+        await initNet<AgeGenderNet>(
+          ageGenderNet,
+          !!withAgeGenderNet && !withAgeGenderNet.quantized && 'age_gender_model.weights'
+        )
+      }
+
       if (withTinyYolov2 || withAllFacesTinyYolov2) {
         await initNet<TinyYolov2>(
           tinyYolov2,
@@ -202,6 +273,8 @@ export function describeWithNets(
           true
         )
       }
+
+
     })
 
     afterAll(() => {
@@ -211,6 +284,7 @@ export function describeWithNets(
       mtcnn.isLoaded && mtcnn.dispose()
       tinyFaceDetector.isLoaded && tinyFaceDetector.dispose()
       tinyYolov2.isLoaded && tinyYolov2.dispose()
+      faceExpressionNet.isLoaded && faceExpressionNet.dispose()
     })
 
     specDefinitions({
@@ -220,6 +294,8 @@ export function describeWithNets(
       faceLandmark68TinyNet,
       faceRecognitionNet,
       mtcnn,
+      faceExpressionNet,
+      ageGenderNet,
       tinyYolov2
     })
   })

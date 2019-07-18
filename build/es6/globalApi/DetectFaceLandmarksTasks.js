@@ -1,15 +1,17 @@
 import * as tslib_1 from "tslib";
 import * as tf from '@tensorflow/tfjs-core';
-import { FaceDetectionWithLandmarks } from '../classes/FaceDetectionWithLandmarks';
 import { extractFaces, extractFaceTensors } from '../dom';
+import { extendWithFaceLandmarks } from '../factories/WithFaceLandmarks';
 import { ComposableTask } from './ComposableTask';
 import { ComputeAllFaceDescriptorsTask, ComputeSingleFaceDescriptorTask } from './ComputeFaceDescriptorsTasks';
 import { nets } from './nets';
+import { PredictAllAgeAndGenderWithFaceAlignmentTask, PredictSingleAgeAndGenderWithFaceAlignmentTask, } from './PredictAgeAndGenderTask';
+import { PredictAllFaceExpressionsWithFaceAlignmentTask, PredictSingleFaceExpressionsWithFaceAlignmentTask, } from './PredictFaceExpressionsTask';
 var DetectFaceLandmarksTaskBase = /** @class */ (function (_super) {
     tslib_1.__extends(DetectFaceLandmarksTaskBase, _super);
-    function DetectFaceLandmarksTaskBase(detectFacesTask, input, useTinyLandmarkNet) {
+    function DetectFaceLandmarksTaskBase(parentTask, input, useTinyLandmarkNet) {
         var _this = _super.call(this) || this;
-        _this.detectFacesTask = detectFacesTask;
+        _this.parentTask = parentTask;
         _this.input = input;
         _this.useTinyLandmarkNet = useTinyLandmarkNet;
         return _this;
@@ -33,13 +35,14 @@ var DetectAllFaceLandmarksTask = /** @class */ (function (_super) {
     }
     DetectAllFaceLandmarksTask.prototype.run = function () {
         return tslib_1.__awaiter(this, void 0, void 0, function () {
+            var parentResults, detections, faces, _a, faceLandmarksByFace;
             var _this = this;
-            var detections, faces, _a, faceLandmarksByFace;
             return tslib_1.__generator(this, function (_b) {
                 switch (_b.label) {
-                    case 0: return [4 /*yield*/, this.detectFacesTask];
+                    case 0: return [4 /*yield*/, this.parentTask];
                     case 1:
-                        detections = _b.sent();
+                        parentResults = _b.sent();
+                        detections = parentResults.map(function (res) { return res.detection; });
                         if (!(this.input instanceof tf.Tensor)) return [3 /*break*/, 3];
                         return [4 /*yield*/, extractFaceTensors(this.input, detections)];
                     case 2:
@@ -55,12 +58,18 @@ var DetectAllFaceLandmarksTask = /** @class */ (function (_super) {
                     case 6:
                         faceLandmarksByFace = _b.sent();
                         faces.forEach(function (f) { return f instanceof tf.Tensor && f.dispose(); });
-                        return [2 /*return*/, detections.map(function (detection, i) {
-                                return new FaceDetectionWithLandmarks(detection, faceLandmarksByFace[i]);
+                        return [2 /*return*/, parentResults.map(function (parentResult, i) {
+                                return extendWithFaceLandmarks(parentResult, faceLandmarksByFace[i]);
                             })];
                 }
             });
         });
+    };
+    DetectAllFaceLandmarksTask.prototype.withFaceExpressions = function () {
+        return new PredictAllFaceExpressionsWithFaceAlignmentTask(this, this.input);
+    };
+    DetectAllFaceLandmarksTask.prototype.withAgeAndGender = function () {
+        return new PredictAllAgeAndGenderWithFaceAlignmentTask(this, this.input);
     };
     DetectAllFaceLandmarksTask.prototype.withFaceDescriptors = function () {
         return new ComputeAllFaceDescriptorsTask(this, this.input);
@@ -75,15 +84,16 @@ var DetectSingleFaceLandmarksTask = /** @class */ (function (_super) {
     }
     DetectSingleFaceLandmarksTask.prototype.run = function () {
         return tslib_1.__awaiter(this, void 0, void 0, function () {
-            var detection, faces, _a, landmarks;
+            var parentResult, detection, faces, _a, landmarks;
             return tslib_1.__generator(this, function (_b) {
                 switch (_b.label) {
-                    case 0: return [4 /*yield*/, this.detectFacesTask];
+                    case 0: return [4 /*yield*/, this.parentTask];
                     case 1:
-                        detection = _b.sent();
-                        if (!detection) {
+                        parentResult = _b.sent();
+                        if (!parentResult) {
                             return [2 /*return*/];
                         }
+                        detection = parentResult.detection;
                         if (!(this.input instanceof tf.Tensor)) return [3 /*break*/, 3];
                         return [4 /*yield*/, extractFaceTensors(this.input, [detection])];
                     case 2:
@@ -99,10 +109,16 @@ var DetectSingleFaceLandmarksTask = /** @class */ (function (_super) {
                     case 6:
                         landmarks = _b.sent();
                         faces.forEach(function (f) { return f instanceof tf.Tensor && f.dispose(); });
-                        return [2 /*return*/, new FaceDetectionWithLandmarks(detection, landmarks)];
+                        return [2 /*return*/, extendWithFaceLandmarks(parentResult, landmarks)];
                 }
             });
         });
+    };
+    DetectSingleFaceLandmarksTask.prototype.withFaceExpressions = function () {
+        return new PredictSingleFaceExpressionsWithFaceAlignmentTask(this, this.input);
+    };
+    DetectSingleFaceLandmarksTask.prototype.withAgeAndGender = function () {
+        return new PredictSingleAgeAndGenderWithFaceAlignmentTask(this, this.input);
     };
     DetectSingleFaceLandmarksTask.prototype.withFaceDescriptor = function () {
         return new ComputeSingleFaceDescriptorTask(this, this.input);

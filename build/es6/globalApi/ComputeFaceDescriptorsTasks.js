@@ -1,14 +1,15 @@
 import * as tslib_1 from "tslib";
-import * as tf from '@tensorflow/tfjs-core';
-import { FullFaceDescription } from '../classes/FullFaceDescription';
-import { extractFaces, extractFaceTensors } from '../dom';
+import { extendWithFaceDescriptor } from '../factories/WithFaceDescriptor';
 import { ComposableTask } from './ComposableTask';
+import { extractAllFacesAndComputeResults, extractSingleFaceAndComputeResult } from './extractFacesAndComputeResults';
 import { nets } from './nets';
+import { PredictAllAgeAndGenderWithFaceAlignmentTask, PredictSingleAgeAndGenderWithFaceAlignmentTask, } from './PredictAgeAndGenderTask';
+import { PredictAllFaceExpressionsWithFaceAlignmentTask, PredictSingleFaceExpressionsWithFaceAlignmentTask, } from './PredictFaceExpressionsTask';
 var ComputeFaceDescriptorsTaskBase = /** @class */ (function (_super) {
     tslib_1.__extends(ComputeFaceDescriptorsTaskBase, _super);
-    function ComputeFaceDescriptorsTaskBase(detectFaceLandmarksTask, input) {
+    function ComputeFaceDescriptorsTaskBase(parentTask, input) {
         var _this = _super.call(this) || this;
-        _this.detectFaceLandmarksTask = detectFaceLandmarksTask;
+        _this.parentTask = parentTask;
         _this.input = input;
         return _this;
     }
@@ -22,49 +23,27 @@ var ComputeAllFaceDescriptorsTask = /** @class */ (function (_super) {
     }
     ComputeAllFaceDescriptorsTask.prototype.run = function () {
         return tslib_1.__awaiter(this, void 0, void 0, function () {
-            var _this = this;
-            var facesWithLandmarks, alignedRects, alignedFaces, _a, fullFaceDescriptions;
-            return tslib_1.__generator(this, function (_b) {
-                switch (_b.label) {
-                    case 0: return [4 /*yield*/, this.detectFaceLandmarksTask];
+            var parentResults, descriptors;
+            return tslib_1.__generator(this, function (_a) {
+                switch (_a.label) {
+                    case 0: return [4 /*yield*/, this.parentTask];
                     case 1:
-                        facesWithLandmarks = _b.sent();
-                        alignedRects = facesWithLandmarks.map(function (_a) {
-                            var alignedRect = _a.alignedRect;
-                            return alignedRect;
-                        });
-                        if (!(this.input instanceof tf.Tensor)) return [3 /*break*/, 3];
-                        return [4 /*yield*/, extractFaceTensors(this.input, alignedRects)];
+                        parentResults = _a.sent();
+                        return [4 /*yield*/, extractAllFacesAndComputeResults(parentResults, this.input, function (faces) { return Promise.all(faces.map(function (face) {
+                                return nets.faceRecognitionNet.computeFaceDescriptor(face);
+                            })); }, null, function (parentResult) { return parentResult.landmarks.align(null, { useDlibAlignment: true }); })];
                     case 2:
-                        _a = _b.sent();
-                        return [3 /*break*/, 5];
-                    case 3: return [4 /*yield*/, extractFaces(this.input, alignedRects)];
-                    case 4:
-                        _a = _b.sent();
-                        _b.label = 5;
-                    case 5:
-                        alignedFaces = _a;
-                        return [4 /*yield*/, Promise.all(facesWithLandmarks.map(function (_a, i) {
-                                var detection = _a.detection, landmarks = _a.landmarks;
-                                return tslib_1.__awaiter(_this, void 0, void 0, function () {
-                                    var descriptor;
-                                    return tslib_1.__generator(this, function (_b) {
-                                        switch (_b.label) {
-                                            case 0: return [4 /*yield*/, nets.faceRecognitionNet.computeFaceDescriptor(alignedFaces[i])];
-                                            case 1:
-                                                descriptor = _b.sent();
-                                                return [2 /*return*/, new FullFaceDescription(detection, landmarks, descriptor)];
-                                        }
-                                    });
-                                });
-                            }))];
-                    case 6:
-                        fullFaceDescriptions = _b.sent();
-                        alignedFaces.forEach(function (f) { return f instanceof tf.Tensor && f.dispose(); });
-                        return [2 /*return*/, fullFaceDescriptions];
+                        descriptors = _a.sent();
+                        return [2 /*return*/, descriptors.map(function (descriptor, i) { return extendWithFaceDescriptor(parentResults[i], descriptor); })];
                 }
             });
         });
+    };
+    ComputeAllFaceDescriptorsTask.prototype.withFaceExpressions = function () {
+        return new PredictAllFaceExpressionsWithFaceAlignmentTask(this, this.input);
+    };
+    ComputeAllFaceDescriptorsTask.prototype.withAgeAndGender = function () {
+        return new PredictAllAgeAndGenderWithFaceAlignmentTask(this, this.input);
     };
     return ComputeAllFaceDescriptorsTask;
 }(ComputeFaceDescriptorsTaskBase));
@@ -76,35 +55,28 @@ var ComputeSingleFaceDescriptorTask = /** @class */ (function (_super) {
     }
     ComputeSingleFaceDescriptorTask.prototype.run = function () {
         return tslib_1.__awaiter(this, void 0, void 0, function () {
-            var detectionWithLandmarks, detection, landmarks, alignedRect, alignedFaces, _a, descriptor;
-            return tslib_1.__generator(this, function (_b) {
-                switch (_b.label) {
-                    case 0: return [4 /*yield*/, this.detectFaceLandmarksTask];
+            var parentResult, descriptor;
+            return tslib_1.__generator(this, function (_a) {
+                switch (_a.label) {
+                    case 0: return [4 /*yield*/, this.parentTask];
                     case 1:
-                        detectionWithLandmarks = _b.sent();
-                        if (!detectionWithLandmarks) {
+                        parentResult = _a.sent();
+                        if (!parentResult) {
                             return [2 /*return*/];
                         }
-                        detection = detectionWithLandmarks.detection, landmarks = detectionWithLandmarks.landmarks, alignedRect = detectionWithLandmarks.alignedRect;
-                        if (!(this.input instanceof tf.Tensor)) return [3 /*break*/, 3];
-                        return [4 /*yield*/, extractFaceTensors(this.input, [alignedRect])];
+                        return [4 /*yield*/, extractSingleFaceAndComputeResult(parentResult, this.input, function (face) { return nets.faceRecognitionNet.computeFaceDescriptor(face); }, null, function (parentResult) { return parentResult.landmarks.align(null, { useDlibAlignment: true }); })];
                     case 2:
-                        _a = _b.sent();
-                        return [3 /*break*/, 5];
-                    case 3: return [4 /*yield*/, extractFaces(this.input, [alignedRect])];
-                    case 4:
-                        _a = _b.sent();
-                        _b.label = 5;
-                    case 5:
-                        alignedFaces = _a;
-                        return [4 /*yield*/, nets.faceRecognitionNet.computeFaceDescriptor(alignedFaces[0])];
-                    case 6:
-                        descriptor = _b.sent();
-                        alignedFaces.forEach(function (f) { return f instanceof tf.Tensor && f.dispose(); });
-                        return [2 /*return*/, new FullFaceDescription(detection, landmarks, descriptor)];
+                        descriptor = _a.sent();
+                        return [2 /*return*/, extendWithFaceDescriptor(parentResult, descriptor)];
                 }
             });
         });
+    };
+    ComputeSingleFaceDescriptorTask.prototype.withFaceExpressions = function () {
+        return new PredictSingleFaceExpressionsWithFaceAlignmentTask(this, this.input);
+    };
+    ComputeSingleFaceDescriptorTask.prototype.withAgeAndGender = function () {
+        return new PredictSingleAgeAndGenderWithFaceAlignmentTask(this, this.input);
     };
     return ComputeSingleFaceDescriptorTask;
 }(ComputeFaceDescriptorsTaskBase));
